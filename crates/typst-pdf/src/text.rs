@@ -5,7 +5,7 @@ use bytemuck::TransparentWrapper;
 use krilla::surface::{Location, Surface};
 use krilla::text::GlyphId;
 use typst_library::diag::{SourceResult, bail};
-use typst_library::text::{Font, FontFlags, Glyph, TextItem};
+use typst_library::text::{Font, FontFlags, FontStyle, Glyph, TextItem};
 use typst_library::visualize::FillRule;
 use typst_syntax::Span;
 use typst_utils::defer;
@@ -81,7 +81,7 @@ fn build_font(typst_font: Font) -> SourceResult<krilla::text::Font> {
         Arc::new(typst_font.data().clone());
 
     let font = if typst_font.info().flags.contains(FontFlags::VARIABLE) {
-        let coords = variation_coords(typst_font.info().variant);
+        let coords = variation_coords(&typst_font);
         krilla::text::Font::new_variable(font_data.into(), typst_font.index(), &coords)
     } else {
         krilla::text::Font::new(font_data.into(), typst_font.index())
@@ -99,16 +99,43 @@ fn build_font(typst_font: Font) -> SourceResult<krilla::text::Font> {
     }
 }
 
-fn variation_coords(
-    variant: typst_library::text::FontVariant,
-) -> Vec<(krilla::text::Tag, f32)> {
-    vec![
+fn variation_coords(typst_font: &Font) -> Vec<(krilla::text::Tag, f32)> {
+    let variant = typst_font.info().variant;
+    let mut coords = vec![
         (krilla::text::Tag::new(b"wght"), variant.weight.to_number() as f32),
         (
             krilla::text::Tag::new(b"wdth"),
             (variant.stretch.to_ratio().get() * 100.0) as f32,
         ),
-    ]
+    ];
+
+    let has_ital = typst_font
+        .ttf()
+        .variation_axes()
+        .into_iter()
+        .any(|axis| axis.tag.to_bytes() == *b"ital");
+    let has_slnt = typst_font
+        .ttf()
+        .variation_axes()
+        .into_iter()
+        .any(|axis| axis.tag.to_bytes() == *b"slnt");
+
+    coords.extend(style_coords(variant.style, has_ital, has_slnt));
+    coords
+}
+
+fn style_coords(
+    style: FontStyle,
+    has_ital: bool,
+    has_slnt: bool,
+) -> Option<(krilla::text::Tag, f32)> {
+    match style {
+        FontStyle::Normal => None,
+        FontStyle::Italic if has_ital => Some((krilla::text::Tag::new(b"ital"), 1.0)),
+        FontStyle::Italic if has_slnt => Some((krilla::text::Tag::new(b"slnt"), -10.0)),
+        FontStyle::Oblique if has_slnt => Some((krilla::text::Tag::new(b"slnt"), -10.0)),
+        _ => None,
+    }
 }
 
 #[derive(Debug, TransparentWrapper)]
@@ -157,41 +184,30 @@ impl krilla::text::Glyph for PdfGlyph {
 
 #[cfg(test)]
 mod tests {
-    use super::variation_coords;
-    use typst_library::layout::Ratio;
-    use typst_library::text::{FontStretch, FontStyle, FontVariant, FontWeight};
+    use super::style_coords;
+    use typst_library::text::FontStyle;
 
     #[test]
-    fn includes_weight_and_width_axes() {
-        let coords = variation_coords(FontVariant {
-            style: FontStyle::Normal,
-            weight: FontWeight::from_number(630),
-            stretch: FontStretch::from_ratio(Ratio::new(0.75)),
-        });
-
-        assert_eq!(
-            coords,
-            vec![
-                (krilla::text::Tag::new(b"wght"), 630.0),
-                (krilla::text::Tag::new(b"wdth"), 75.0),
-            ]
-        );
+    fn italic_prefers_ital_axis() {
+        let coords = style_coords(FontStyle::Italic, true, true);
+        assert_eq!(coords, Some((krilla::text::Tag::new(b"ital"), 1.0)));
     }
 
     #[test]
-    fn keeps_weight_and_width_for_italic_variant() {
-        let coords = variation_coords(FontVariant::new(
-            FontStyle::Italic,
-            FontWeight::REGULAR,
-            FontStretch::NORMAL,
-        ));
+    fn italic_falls_back_to_slnt_axis() {
+        let coords = style_coords(FontStyle::Italic, false, true);
+        assert_eq!(coords, Some((krilla::text::Tag::new(b"slnt"), -10.0)));
+    }
 
-        assert_eq!(
-            coords,
-            vec![
-                (krilla::text::Tag::new(b"wght"), 400.0),
-                (krilla::text::Tag::new(b"wdth"), 100.0),
-            ]
-        );
+    #[test]
+    fn oblique_uses_slnt_axis() {
+        let coords = style_coords(FontStyle::Oblique, false, true);
+        assert_eq!(coords, Some((krilla::text::Tag::new(b"slnt"), -10.0)));
+    }
+
+    #[test]
+    fn no_axis_for_unsupported_style() {
+        let coords = style_coords(FontStyle::Italic, false, false);
+        assert_eq!(coords, None);
     }
 }
