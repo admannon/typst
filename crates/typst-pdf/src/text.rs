@@ -5,7 +5,7 @@ use bytemuck::TransparentWrapper;
 use krilla::surface::{Location, Surface};
 use krilla::text::GlyphId;
 use typst_library::diag::{SourceResult, bail};
-use typst_library::text::{Font, Glyph, TextItem};
+use typst_library::text::{Font, FontFlags, FontStyle, Glyph, TextItem};
 use typst_library::visualize::FillRule;
 use typst_syntax::Span;
 use typst_utils::defer;
@@ -80,7 +80,14 @@ fn build_font(typst_font: Font) -> SourceResult<krilla::text::Font> {
     let font_data: Arc<dyn AsRef<[u8]> + Send + Sync> =
         Arc::new(typst_font.data().clone());
 
-    match krilla::text::Font::new(font_data.into(), typst_font.index()) {
+    let font = if typst_font.info().flags.contains(FontFlags::VARIABLE) {
+        let coords = variation_coords(typst_font.info().variant);
+        krilla::text::Font::new_variable(font_data.into(), typst_font.index(), &coords)
+    } else {
+        krilla::text::Font::new(font_data.into(), typst_font.index())
+    };
+
+    match font {
         Some(f) => Ok(f),
         None => {
             bail!(
@@ -90,6 +97,27 @@ fn build_font(typst_font: Font) -> SourceResult<krilla::text::Font> {
             )
         }
     }
+}
+
+fn variation_coords(
+    variant: typst_library::text::FontVariant,
+) -> Vec<(krilla::text::Tag, f32)> {
+    let mut coords = vec![
+        (
+            krilla::text::Tag::new(b"wght"),
+            variant.weight.to_number() as f32,
+        ),
+        (
+            krilla::text::Tag::new(b"wdth"),
+            (variant.stretch.to_ratio().get() * 100.0) as f32,
+        ),
+    ];
+
+    if variant.style == FontStyle::Italic {
+        coords.push((krilla::text::Tag::new(b"ital"), 1.0));
+    }
+
+    coords
 }
 
 #[derive(Debug, TransparentWrapper)]
@@ -133,5 +161,40 @@ impl krilla::text::Glyph for PdfGlyph {
 
     fn location(&self) -> Option<Location> {
         Some(self.0.span.0.into_raw())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::variation_coords;
+    use typst_library::layout::Ratio;
+    use typst_library::text::{FontStretch, FontStyle, FontVariant, FontWeight};
+
+    #[test]
+    fn includes_weight_and_width_axes() {
+        let coords = variation_coords(FontVariant {
+            style: FontStyle::Normal,
+            weight: FontWeight::from_number(630),
+            stretch: FontStretch::from_ratio(Ratio::new(0.75)),
+        });
+
+        assert_eq!(
+            coords,
+            vec![
+                (krilla::text::Tag::new(b"wght"), 630.0),
+                (krilla::text::Tag::new(b"wdth"), 75.0),
+            ]
+        );
+    }
+
+    #[test]
+    fn includes_ital_axis_for_italic() {
+        let coords = variation_coords(FontVariant::new(
+            FontStyle::Italic,
+            FontWeight::REGULAR,
+            FontStretch::NORMAL,
+        ));
+
+        assert!(coords.contains(&(krilla::text::Tag::new(b"ital"), 1.0)));
     }
 }
