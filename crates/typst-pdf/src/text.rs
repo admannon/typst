@@ -5,7 +5,7 @@ use bytemuck::TransparentWrapper;
 use krilla::surface::{Location, Surface};
 use krilla::text::GlyphId;
 use typst_library::diag::{SourceResult, bail};
-use typst_library::text::{Font, FontFlags, FontStyle, Glyph, TextItem};
+use typst_library::text::{Font, FontFlags, Glyph, TextItem};
 use typst_library::visualize::FillRule;
 use typst_syntax::Span;
 use typst_utils::defer;
@@ -102,19 +102,13 @@ fn build_font(typst_font: Font) -> SourceResult<krilla::text::Font> {
 fn variation_coords(
     variant: typst_library::text::FontVariant,
 ) -> Vec<(krilla::text::Tag, f32)> {
-    let mut coords = vec![
+    vec![
         (krilla::text::Tag::new(b"wght"), variant.weight.to_number() as f32),
         (
             krilla::text::Tag::new(b"wdth"),
             (variant.stretch.to_ratio().get() * 100.0) as f32,
         ),
-    ];
-
-    if variant.style == FontStyle::Italic {
-        coords.push((krilla::text::Tag::new(b"ital"), 1.0));
-    }
-
-    coords
+    ]
 }
 
 #[derive(Debug, TransparentWrapper)]
@@ -185,13 +179,19 @@ mod tests {
     }
 
     #[test]
-    fn includes_ital_axis_for_italic() {
+    fn keeps_weight_and_width_for_italic_variant() {
         let coords = variation_coords(FontVariant::new(
             FontStyle::Italic,
             FontWeight::REGULAR,
             FontStretch::NORMAL,
         ));
 
-        assert!(coords.contains(&(krilla::text::Tag::new(b"ital"), 1.0)));
+        assert_eq!(
+            coords,
+            vec![
+                (krilla::text::Tag::new(b"wght"), 400.0),
+                (krilla::text::Tag::new(b"wdth"), 100.0),
+            ]
+        );
     }
 }
