@@ -103,10 +103,7 @@ fn variation_coords(
     variant: typst_library::text::FontVariant,
 ) -> Vec<(krilla::text::Tag, f32)> {
     let mut coords = vec![
-        (
-            krilla::text::Tag::new(b"wght"),
-            variant.weight.to_number() as f32,
-        ),
+        (krilla::text::Tag::new(b"wght"), variant.weight.to_number() as f32),
         (
             krilla::text::Tag::new(b"wdth"),
             (variant.stretch.to_ratio().get() * 100.0) as f32,
