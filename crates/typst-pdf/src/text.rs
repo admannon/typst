@@ -107,13 +107,7 @@ fn variation_coords(
     typst_font: &Font,
     variant: FontVariant,
 ) -> Vec<(krilla::text::Tag, f32)> {
-    let mut coords = vec![
-        (krilla::text::Tag::new(b"wght"), variant.weight.to_number() as f32),
-        (
-            krilla::text::Tag::new(b"wdth"),
-            (variant.stretch.to_ratio().get() * 100.0) as f32,
-        ),
-    ];
+    let mut coords = base_variation_coords(variant);
 
     let has_ital = typst_font
         .ttf()
@@ -128,6 +122,16 @@ fn variation_coords(
 
     coords.extend(style_coords(variant.style, has_ital, has_slnt));
     coords
+}
+
+fn base_variation_coords(variant: FontVariant) -> Vec<(krilla::text::Tag, f32)> {
+    vec![
+        (krilla::text::Tag::new(b"wght"), variant.weight.to_number() as f32),
+        (
+            krilla::text::Tag::new(b"wdth"),
+            (variant.stretch.to_ratio().get() * 100.0) as f32,
+        ),
+    ]
 }
 
 fn style_coords(
@@ -190,8 +194,26 @@ impl krilla::text::Glyph for PdfGlyph {
 
 #[cfg(test)]
 mod tests {
-    use super::style_coords;
-    use typst_library::text::FontStyle;
+    use super::{base_variation_coords, style_coords};
+    use typst_library::layout::Ratio;
+    use typst_library::text::{FontStretch, FontStyle, FontVariant, FontWeight};
+
+    #[test]
+    fn maps_weight_and_width_from_variant() {
+        let coords = base_variation_coords(FontVariant {
+            style: FontStyle::Normal,
+            weight: FontWeight::from_number(630),
+            stretch: FontStretch::from_ratio(Ratio::new(0.75)),
+        });
+
+        assert_eq!(
+            coords,
+            vec![
+                (krilla::text::Tag::new(b"wght"), 630.0),
+                (krilla::text::Tag::new(b"wdth"), 75.0),
+            ]
+        );
+    }
 
     #[test]
     fn italic_prefers_ital_axis() {
