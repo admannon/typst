@@ -5,7 +5,7 @@ use bytemuck::TransparentWrapper;
 use krilla::surface::{Location, Surface};
 use krilla::text::GlyphId;
 use typst_library::diag::{SourceResult, bail};
-use typst_library::text::{Font, FontFlags, FontStyle, Glyph, TextItem};
+use typst_library::text::{Font, FontFlags, FontStyle, FontVariant, Glyph, TextItem};
 use typst_library::visualize::FillRule;
 use typst_syntax::Span;
 use typst_utils::defer;
@@ -24,7 +24,7 @@ pub(crate) fn handle_text(
     let mut handle = tags::text(gc, fc, surface, t);
     let surface = handle.surface();
 
-    let font = convert_font(gc, t.font.clone())?;
+    let font = convert_font(gc, t.font.clone(), t.variant)?;
     let fill = paint::convert_fill(
         gc,
         &t.fill,
@@ -62,13 +62,14 @@ pub(crate) fn handle_text(
 fn convert_font(
     gc: &mut GlobalContext,
     typst_font: Font,
+    variant: FontVariant,
 ) -> SourceResult<krilla::text::Font> {
-    if let Some(font) = gc.fonts_forward.get(&typst_font) {
+    if let Some(font) = gc.fonts_forward.get(&(typst_font.clone(), variant)) {
         Ok(font.clone())
     } else {
-        let font = build_font(typst_font.clone())?;
+        let font = build_font(typst_font.clone(), variant)?;
 
-        gc.fonts_forward.insert(typst_font.clone(), font.clone());
+        gc.fonts_forward.insert((typst_font.clone(), variant), font.clone());
         gc.fonts_backward.insert(font.clone(), typst_font.clone());
 
         Ok(font)
@@ -76,12 +77,15 @@ fn convert_font(
 }
 
 #[comemo::memoize]
-fn build_font(typst_font: Font) -> SourceResult<krilla::text::Font> {
+fn build_font(
+    typst_font: Font,
+    variant: FontVariant,
+) -> SourceResult<krilla::text::Font> {
     let font_data: Arc<dyn AsRef<[u8]> + Send + Sync> =
         Arc::new(typst_font.data().clone());
 
     let font = if typst_font.info().flags.contains(FontFlags::VARIABLE) {
-        let coords = variation_coords(&typst_font);
+        let coords = variation_coords(&typst_font, variant);
         krilla::text::Font::new_variable(font_data.into(), typst_font.index(), &coords)
     } else {
         krilla::text::Font::new(font_data.into(), typst_font.index())
@@ -99,8 +103,10 @@ fn build_font(typst_font: Font) -> SourceResult<krilla::text::Font> {
     }
 }
 
-fn variation_coords(typst_font: &Font) -> Vec<(krilla::text::Tag, f32)> {
-    let variant = typst_font.info().variant;
+fn variation_coords(
+    typst_font: &Font,
+    variant: FontVariant,
+) -> Vec<(krilla::text::Tag, f32)> {
     let mut coords = vec![
         (krilla::text::Tag::new(b"wght"), variant.weight.to_number() as f32),
         (

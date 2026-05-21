@@ -260,9 +260,10 @@ impl GlyphFragment {
         text: &str,
         span: Span,
     ) -> Option<GlyphFragment> {
+        let variant = variant(styles);
         let (font, mut glyphs) = shape(
             world,
-            variant(styles),
+            variant,
             features(styles),
             language(styles),
             styles.get(TextElem::fallback),
@@ -277,6 +278,7 @@ impl GlyphFragment {
         let item = TextItem {
             text: text.into(),
             font,
+            variant,
             size: styles.resolve(TextElem::size),
             fill: styles.get_ref(TextElem::fill).as_decoration(),
             stroke: styles.resolve(TextElem::stroke).map(|s| s.unwrap_or_default()),

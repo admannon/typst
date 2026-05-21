@@ -5,7 +5,7 @@ use ecow::EcoString;
 use typst_syntax::Span;
 
 use crate::layout::{Abs, Em, Point, Rect};
-use crate::text::{Font, Lang, Region, is_default_ignorable};
+use crate::text::{Font, FontVariant, Lang, Region, is_default_ignorable};
 use crate::visualize::{FixedStroke, Paint};
 
 /// A run of shaped text.
@@ -13,6 +13,8 @@ use crate::visualize::{FixedStroke, Paint};
 pub struct TextItem {
     /// The font the glyphs are contained in.
     pub font: Font,
+    /// The requested text variant used for this run.
+    pub variant: FontVariant,
     /// The font size.
     pub size: Abs,
     /// Glyph color.

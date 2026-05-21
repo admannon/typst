@@ -435,6 +435,7 @@ impl<'a> ShapedText<'a> {
 
             let item = TextItem {
                 font,
+                variant: self.variant,
                 size: glyph_size,
                 lang: self.lang,
                 region: self.region,
