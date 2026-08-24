@@ -36,20 +36,19 @@ const BOUND_EPS: f64 = 1e-3;
 /// The general line break segmenter.
 ///
 /// This uses the experimental `_neo_` segmenter from ICU4X (Unicode 17), which
-/// is only available in the `unstable` feature of `icu_segmenter`. We depend on
-/// `icu_segmenter` from the `main` branch of unicode-org/icu4x because the
-/// released versions (up to and including 2.3.0) ignore the WORD JOINER
-/// (U+2060) in complex scripts like Thai:
-/// <https://github.com/unicode-org/icu4x/issues/8243>.
+/// is only available in the `unstable` feature of `icu_segmenter`. ICU4X's
+/// classic LSTM and dictionary segmenters ignore the WORD JOINER (U+2060) in
+/// complex scripts like Thai, allowing illegal line breaks:
+/// <https://github.com/unicode-org/icu4x/issues/8243>. The `_neo_` segmenter
+/// fixes this, so we use it for all languages.
 ///
 /// The `_neo_` segmenter also handles line breaks around curly quotes in
 /// Chinese and Japanese per UAX #14, which previously required a custom
 /// segmenter with overridden line break data (see `typst-assets`). That custom
 /// segmenter and its `serde` dependency have been removed.
 ///
-/// Once ICU4X officially releases a version containing the fix, revert the
-/// `icu_*` dependencies in `Cargo.toml` to the released crates and drop the
-/// `unstable` feature (see the comment in `Cargo.toml`).
+/// Once the `_neo_` segmenter is stabilized upstream, the `unstable` feature
+/// can be dropped (see the comment in `Cargo.toml`).
 static SEGMENTER: LazyLock<LineSegmenterBorrowed> = LazyLock::new(|| {
     let mut segmenter =
         LineSegmenter::new_neo_for_non_complex_scripts(LineBreakOptions::default());
@@ -1042,17 +1041,16 @@ mod tests {
     /// A WORD JOINER (U+2060) must prevent line breaks between adjacent
     /// characters, per rule LB11 of UAX #14.
     ///
-    /// This is a regression test for an upstream ICU4X bug: the LSTM and
-    /// dictionary segmenters used to ignore the WORD JOINER when segmenting
+    /// This is a regression test for an ICU4X bug: the classic LSTM and
+    /// dictionary segmenters ignore the WORD JOINER when segmenting
     /// complex-script text like Thai:
     /// <https://github.com/unicode-org/icu4x/issues/8243> (duplicate of
     /// <https://github.com/unicode-org/icu4x/issues/7218>). It is fixed in
-    /// ICU4X's new `_neo_` line segmenter, which we use here via the git
-    /// dependency in `Cargo.toml`.
+    /// ICU4X's `_neo_` line segmenter, which we use here via the `unstable`
+    /// feature (see the comment in `Cargo.toml`).
     ///
-    /// When ICU4X officially releases a version with the fix and we revert the
-    /// dependency, keep this test: it verifies that the segmenter only reports
-    /// a break at the very end of the string.
+    /// This test verifies that the segmenter only reports a break at the very
+    /// end of the string. Keep it if the `unstable` feature is ever dropped.
     #[test]
     fn word_joiner_prevents_break_in_thai() {
         let text = "ก\u{2060}รุ\u{2060}ง\u{2060}เ\u{2060}ท\u{2060}พ\u{2060}ม\u{2060}ห\u{2060}า\u{2060}น\u{2060}ค\u{2060}ร";
